@@ -21,7 +21,7 @@ class ThreeColumnDashboard(ctk.CTk):
 
         # Window basics
         self.title("Three Column Dashboard")
-        self.geometry("1200x640")
+        self.geometry("1000x550")
 
         # Root grid: 3 equal columns using a uniform group
         self.grid_rowconfigure(0, weight=1)
@@ -42,7 +42,7 @@ class ThreeColumnDashboard(ctk.CTk):
         # Populate columns
         self._build_column0(self.col_frames[0])
         self._build_column1(self.col_frames[1])
-        self._build_column2(self.col_frames[2])
+        self._low_level_microcontroller(self.col_frames[2])
 
     # --- Column builders -------------------------------------------------
     def _build_column0(self, parent: ctk.CTkFrame):
@@ -93,23 +93,78 @@ class ThreeColumnDashboard(ctk.CTk):
         other_tab.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(other_tab, text="Misc content here").grid(row=0, column=0, padx=8, pady=12)
 
-    def _build_column2(self, parent: ctk.CTkFrame):
-        title = ctk.CTkLabel(parent, text="Column 2", font=ctk.CTkFont(size=18, weight="bold"))
+    def _low_level_microcontroller(self, parent: ctk.CTkFrame):
+        title = ctk.CTkLabel(parent, text="Low Level Microcontroller", font=ctk.CTkFont(size=18, weight="bold"))
         title.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 8))
-        # Scrollable frame example
-        scroll = ctk.CTkScrollableFrame(parent, label_text="Sensors")
-        scroll.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        scroll.grid_columnconfigure(0, weight=1)
-        self.sensor_switches: list[ctk.CTkSwitch] = []
-        for i in range(1, 21):
-            sw = ctk.CTkSwitch(scroll, text=f"Sensor {i}")
-            sw.grid(row=i-1, column=0, padx=8, pady=4, sticky="w")
-            self.sensor_switches.append(sw)
-        # Bottom actions
-        bottom = ctk.CTkFrame(parent, fg_color="transparent")
-        bottom.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
-        ctk.CTkButton(bottom, text="Enable All", command=self._enable_all_sensors).pack(side="left", padx=4, pady=4)
-        ctk.CTkButton(bottom, text="Disable All", command=self._disable_all_sensors).pack(side="left", padx=4, pady=4)
+
+        # row/column configuration
+        parent.grid_rowconfigure(1, weight=0)       # speed frame
+        parent.grid_rowconfigure(2, weight=0)       # battery panel (no expansion)
+        parent.grid_rowconfigure(3, weight=0)       # motion panel
+        parent.grid_columnconfigure(0, weight=1)
+
+        # speed frame 
+        speed = ctk.CTkFrame(parent)
+        speed.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
+        speed.grid_columnconfigure(0, weight=1)
+
+        # slider to publish speed
+        ctk.CTkLabel(speed, text="Speed", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=12, pady=(12, 4), sticky="w")
+        self.speed_progressbar = ctk.CTkProgressBar(speed)
+        self.speed_progressbar.grid(row=1, column=0, padx=12, pady=4, sticky="ew")
+        self.speed_slider = ctk.CTkSlider(speed, from_=0, to=1, number_of_steps=100, command=self.speed_progressbar.set)
+        self.speed_slider.grid(row=2, column=0, padx=12, pady=(4, 12), sticky="ew")
+        self.speed_slider.set(0.5)
+
+        # text box for subscriber
+        self.speed_value_box = ctk.CTkTextbox(speed, height=28, width=120)
+        self.speed_value_box.grid(row=3, column=0, padx=12, pady=(0, 12), sticky="ew")
+        self.speed_value_box.insert("0.0", "-- value --")
+        self.speed_value_box.configure(state="disabled")  
+        
+        # battery panel (non-expanding)
+        battery_panel = ctk.CTkFrame(parent)
+        # Only take needed vertical space (no 'nsew')
+        battery_panel.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
+        battery_panel.grid_columnconfigure(0, weight=1)
+
+        # LCD display for battery
+        self.battery_display = ctk.CTkLabel(
+            battery_panel,
+            text="--",
+            font=ctk.CTkFont(size=80, weight="bold"),
+            text_color="#9aff9a",
+            fg_color="#142214",
+            corner_radius=8,
+            padx=12,
+            pady=6
+        )
+        self.battery_display.grid(row=0, column=0, padx=4, pady=(8, 12), sticky="ew")
+
+        # input to publish battery 
+        input_row = ctk.CTkFrame(battery_panel, fg_color="transparent")
+        input_row.grid(row=1, column=0, sticky="ew", padx=4, pady=(0, 8))
+        input_row.grid_columnconfigure(0, weight=1)
+        self.battery_entry = ctk.CTkEntry(input_row, placeholder_text="Battery %")
+        self.battery_entry.grid(row=0, column=0, padx=(0, 6), pady=4, sticky="ew")
+        self.battery_send_btn = ctk.CTkButton(input_row, text="Send", width=70)
+        self.battery_send_btn.grid(row=0, column=1, padx=0, pady=4)
+
+        # LCD display for motion
+        motion_panel = ctk.CTkFrame(parent)
+        motion_panel.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 12))
+        motion_panel.grid_columnconfigure((0, 1), weight=1)
+        self.motion_display = ctk.CTkLabel(
+            motion_panel,
+            text="--",
+            font=ctk.CTkFont(size=80, weight="bold"),
+            text_color="#ffd27f",   
+            fg_color="#202020",
+            corner_radius=8,
+            padx=12,
+            pady=6
+        )
+        self.motion_display.grid(row=0, column=0, columnspan=2, padx=4, pady=(8, 8), sticky="ew")
 
     # --- Callbacks --------------------------------------------------------
     def _clear_log(self):
