@@ -35,19 +35,18 @@ class MobileRobotDashboard(ctk.CTk):
 
         # MQTT service init
         self._init_mqtt()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
 
-    # ------------------- Devices -------------------
+    # --- Devices --------------------------------------------------------
     def _log_window(self, parent: ctk.CTkFrame):
         title = ctk.CTkLabel(parent, text="Log", font=ctk.CTkFont(size=18, weight="bold"))
         title.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 8))
         self.text_log = ctk.CTkTextbox(parent)
         self.text_log.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        button_bar = ctk.CTkFrame(parent, fg_color="transparent")
-        button_bar.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
-        button_bar.grid_columnconfigure(0, weight=1)
-        ctk.CTkButton(button_bar, text="Clear", command=self._clear_log).grid(row=0, column=0, padx=4, pady=4, sticky="ew")
+        clear_btn = ctk.CTkFrame(parent, fg_color="transparent")
+        clear_btn.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
+        clear_btn.grid_columnconfigure(0, weight=1)
+        ctk.CTkButton(clear_btn, text="Clear", command=self._clear_log).grid(row=0, column=0, padx=4, pady=4, sticky="ew")
 
     def _fleet_manager(self, parent: ctk.CTkFrame):
         title = ctk.CTkLabel(parent, text="Fleet Manager", font=ctk.CTkFont(size=18, weight="bold"))
@@ -68,17 +67,71 @@ class MobileRobotDashboard(ctk.CTk):
     def _robot_core(self, parent: ctk.CTkFrame):
         title = ctk.CTkLabel(parent, text="Core", font=ctk.CTkFont(size=18, weight="bold"))
         title.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 8))
-        wrapper = ctk.CTkFrame(parent, fg_color="transparent")
-        wrapper.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0,12))
-        wrapper.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(wrapper, text="Select Driving Mode:").grid(row=0, column=0, padx=8, pady=(12,4), sticky="w")
-        self.mode2_var = tk.StringVar(value="Auto")
-        mode_row = ctk.CTkFrame(wrapper, fg_color="transparent")
+
+        # row/column configuration
+        parent.grid_rowconfigure(1, weight=0)       # laser frame
+        parent.grid_rowconfigure(2, weight=0)       # mode panel 
+        parent.grid_rowconfigure(3, weight=0)       # bumper frame
+        parent.grid_rowconfigure(4, weight=1)       # spacer
+        parent.grid_columnconfigure(0, weight=1)
+
+        # mode panel 
+        mode_panel = ctk.CTkFrame(parent)
+        mode_panel.grid(row=1, column=0, sticky="ew", padx=12, pady=(0,12))
+        mode_panel.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(mode_panel, text="Select Driving Mode:").grid(row=0, column=0, padx=8, pady=(12,4), sticky="w")
+        self.selected_mode = tk.StringVar(value="Auto")
+        mode_row = ctk.CTkFrame(mode_panel, fg_color="transparent")
         mode_row.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
         for m in ("Auto", "Manual"):
-            ctk.CTkRadioButton(mode_row, text=m, value=m, variable=self.mode2_var).pack(side="left", padx=4)
-        ctk.CTkButton(wrapper, text="Apply", command=lambda: self._append_log(f"Mode2 -> {self.mode2_var.get()}")) \
-            .grid(row=2, column=0, padx=8, pady=(8,12), sticky="ew")
+            ctk.CTkRadioButton(mode_row, text=m, value=m, variable=self.selected_mode).pack(side="left", padx=4)
+        ctk.CTkButton(mode_panel, text="Apply", command=self._on_mode_apply).grid(row=2, column=0, padx=8, pady=(4,8), sticky="ew")
+
+        # laser panel 
+        laser_panel = ctk.CTkFrame(parent)
+        laser_panel.grid(row=2, column=0, sticky="ew", padx=12, pady=(0,12))
+        laser_panel.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(laser_panel, text="Laser (cm)", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=12, pady=(12,4), sticky="w")
+        self.laser_progressbar = ctk.CTkProgressBar(laser_panel)
+        self.laser_progressbar.grid(row=1, column=0, padx=12, pady=4, sticky="ew")
+        self.laser_slider = ctk.CTkSlider(laser_panel, from_=0, to=100, number_of_steps=100)
+        self.laser_slider.grid(row=2, column=0, padx=12, pady=(4,12), sticky="ew")
+        self.laser_slider.set(50)
+        self.laser_slider.bind("<ButtonRelease-1>", lambda e: self._on_laser_released())
+
+        # bumper panel 
+        bumper_panel = ctk.CTkFrame(parent)
+        bumper_panel.grid(row=3, column=0, sticky="ew", padx=12, pady=(0,12))
+        bumper_panel.grid_columnconfigure(0, weight=1)
+        btn_font = ctk.CTkFont(size=16, weight="bold")
+        self.bumper_true_button = ctk.CTkButton(
+            bumper_panel,
+            text="Bumper",
+            height=44,
+            font=btn_font,
+            command=self._on_bumper_true
+        )
+        self.bumper_true_button.grid(row=0, column=0, padx=12, pady=(12,4), sticky="ew")
+        self.bumper_false_button = ctk.CTkButton(
+            bumper_panel,
+            text="Release",
+            height=36,
+            font=btn_font,
+            fg_color="#444444",
+            command=self._on_bumper_false
+        )
+        self.bumper_false_button.grid(row=1, column=0, padx=12, pady=4, sticky="ew")
+        self.bumper_display = ctk.CTkLabel(
+            bumper_panel,
+            text="--",
+            font=ctk.CTkFont(size=80, weight="bold"),
+            text_color="#cccccc",
+            fg_color="#202020",
+            corner_radius=8,
+            padx=12,
+            pady=6
+        )
+        self.bumper_display.grid(row=2, column=0, padx=12, pady=(6,12), sticky="ew")
 
     def _low_level_microcontroller(self, parent: ctk.CTkFrame):
         title = ctk.CTkLabel(parent, text="Low Level Microcontroller", font=ctk.CTkFont(size=18, weight="bold"))
@@ -104,7 +157,7 @@ class MobileRobotDashboard(ctk.CTk):
         self.speed_slider.set(50)
         self.speed_slider.bind("<ButtonRelease-1>", lambda e: self._on_speed_released())
 
-        # text box for subscriber
+        # text box for speed subscriber
         self.speed_value_box = ctk.CTkTextbox(speed, height=28, width=120)
         self.speed_value_box.grid(row=3, column=0, padx=12, pady=(0, 12), sticky="ew")
         self.speed_value_box.insert("0.0", " -- ")
@@ -115,7 +168,7 @@ class MobileRobotDashboard(ctk.CTk):
         battery_panel.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
         battery_panel.grid_columnconfigure(0, weight=1)
 
-        # LCD display for battery
+        # LCD display for battery subscriber
         self.battery_display = ctk.CTkLabel(
             battery_panel,
             text="--",
@@ -137,7 +190,7 @@ class MobileRobotDashboard(ctk.CTk):
         self.battery_send_btn = ctk.CTkButton(input_row, text="Send", width=70, command=self._send_battery)
         self.battery_send_btn.grid(row=0, column=1, padx=0, pady=4)
 
-        # LCD display for motion
+        # LCD display for motion subscriber
         motion_panel = ctk.CTkFrame(parent)
         motion_panel.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 12))
         motion_panel.grid_columnconfigure((0, 1), weight=1)
@@ -161,6 +214,49 @@ class MobileRobotDashboard(ctk.CTk):
     def _append_log(self, line: str):
         self.text_log.insert("end", line + "\n")
         self.text_log.see("end")
+
+
+    # --- Callbacks Core ------------------------------------------------------
+    # laser publisher
+    def _on_laser_released(self):
+        cm = int(self.laser_slider.get())
+        if hasattr(self, '_laser_pub'):
+            self.mqtt.publish(self._laser_pub, cm)
+            self._append_log(f"(PUB) Laser {cm} cm in {self._laser_pub}")
+        self.laser_progressbar.set(cm / 100.0)
+
+    # mode publisher
+    def _on_mode_apply(self):
+        mode = self.selected_mode.get()
+        if hasattr(self, 'mqtt') and hasattr(self, '_mode_pub'):
+            self.mqtt.publish(self._mode_pub, mode)
+            self._append_log(f"(PUB) Mode {mode} in {self._mode_pub}")
+
+    # bumper publisher
+    def _on_bumper_true(self):
+        if hasattr(self, 'mqtt') and hasattr(self, '_bumper_pub'):
+            self.mqtt.publish(self._bumper_pub, "true")
+            self._append_log(f"(PUB) Bumper TRUE in {self._bumper_pub}")
+
+    def _on_bumper_false(self):
+        if hasattr(self, 'mqtt') and hasattr(self, '_bumper_pub'):
+            self.mqtt.publish(self._bumper_pub, "false")
+            self._append_log(f"(PUB) Bumper FALSE in {self._bumper_pub}")
+
+    def _handle_bumper_sensor_update(self, payload: str):
+        raw = (payload or "").strip()
+        if not raw:
+            display_text = "--"
+            color = "#cccccc"
+        else:
+            if "obstacle" in raw.lower():
+                color = "#ffd27f" 
+            else:
+                color = "#cccccc"  
+            display_text = raw  
+        self.bumper_display.configure(text=display_text, text_color=color)
+        self._append_log(f"(SUB) Bumper sensor '{payload}' in {getattr(self, '_bumper_sensor_sub', '?')}")
+
 
     # --- Callbacks Low-level-microcontroller ----------------------------------
     # speed publisher
@@ -226,6 +322,7 @@ class MobileRobotDashboard(ctk.CTk):
         self.motion_display.configure(text=text, text_color=color)
         self._append_log(f"(SUB) Motion '{payload}' in {getattr(self, '_motion_sub', '?')}")
 
+
     # --- MQTT ------------------------------------------
     def _init_mqtt(self):
         # topics
@@ -233,7 +330,11 @@ class MobileRobotDashboard(ctk.CTk):
         self._speed_sub = "/low_level_controller/speed/data/value"
         self._battery_pub = "/battery_entry/data/value"          
         self._battery_sub = "/low_level_controller/battery/status"  
+        self._laser_pub = "/laser_slider/data/value"
         self._motion_sub = "/core/sensor_laser/data/value"
+        self._bumper_pub = "/bumper_button/pressed/value"
+        self._bumper_sensor_sub = "/core/sensor_bumper/data"
+        self._mode_pub = "/mode_selector/driving_mode/value"
 
         self.mqtt = MqttService(log_fn=self._append_log)
         self.mqtt.start()
@@ -241,6 +342,7 @@ class MobileRobotDashboard(ctk.CTk):
         self.mqtt.subscribe(self._speed_sub, self._on_speed_message)
         self.mqtt.subscribe(self._battery_sub, self._on_battery_message)
         self.mqtt.subscribe(self._motion_sub, self._on_motion_message)
+        self.mqtt.subscribe(self._bumper_sensor_sub, self._on_bumper_sensor_message)
 
     def _on_speed_message(self, topic: str, payload: str):
         try:
@@ -255,6 +357,9 @@ class MobileRobotDashboard(ctk.CTk):
 
     def _on_motion_message(self, topic: str, payload: str):
         self.after(0, lambda p=payload: self._handle_motion_update(p))
+    
+    def _on_bumper_sensor_message(self, topic: str, payload: str):
+        self.after(0, lambda p=payload: self._handle_bumper_sensor_update(p))
 
     def _on_close(self):
         try:
