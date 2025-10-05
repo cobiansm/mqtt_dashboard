@@ -20,7 +20,7 @@ class MqttService:
         self._client.on_message = self._on_message
         self._client.on_disconnect = self._on_disconnect
 
-    # ------------------- API -------------------
+    # --- API --------------------------------------------------------------
     def start(self):
         try:
             self._client.connect_async(self.host, self.port, self.keepalive)
@@ -36,7 +36,7 @@ class MqttService:
         except Exception:
             pass
 
-    def publish(self, topic: str, payload, qos: int = 1, retain: bool = True):
+    def publish(self, topic: str, payload, qos: int = 0, retain: bool = False):
         try:
             self._client.publish(topic, payload=payload, qos=qos, retain=retain)
         except Exception as e:
@@ -50,11 +50,10 @@ class MqttService:
         except Exception as e:
             self._log(f"MQTT subscribe error {topic}: {e}")
 
-    # ------------------- Internal callbacks -------------------
+    # --- Callbacks --------------------------------------------------------
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self._log("MQTT connected (rc=0)")
-            # Re-suscribir tópicos registrados tras reconexión
             for t in self._handlers.keys():
                 try:
                     client.subscribe(t)

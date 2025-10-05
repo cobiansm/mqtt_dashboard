@@ -81,7 +81,7 @@ class MobileRobotDashboard(ctk.CTk):
         job_panel.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(job_panel, text="Job", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, padx=4, pady=(8,4), sticky="w")
         self.job_var = tk.StringVar(value="Idle")
-        self.job_menu = ctk.CTkOptionMenu(job_panel, variable=self.job_var, values=["Idle", "Survey", "Delivery", "Inspection"], command=self._on_job_selected)
+        self.job_menu = ctk.CTkOptionMenu(job_panel, variable=self.job_var, values=["Idle", "Moving", "Delivery", "Task failed"], command=self._on_job_selected)
         self.job_menu.grid(row=1, column=0, padx=4, pady=(0,6), sticky="ew")
         
         # LCD for job subscriber
@@ -90,7 +90,7 @@ class MobileRobotDashboard(ctk.CTk):
             text="--",
             font=ctk.CTkFont(size=50, weight="bold"),
             text_color="#cccccc",
-            fg_color="#202020",
+            fg_color="#303030",
             corner_radius=8,
             padx=8,
             pady=6
@@ -105,10 +105,11 @@ class MobileRobotDashboard(ctk.CTk):
         self.battery_display = ctk.CTkLabel(
             battery_panel,
             text="--",
-            font=ctk.CTkFont(size=80, weight="bold"),
-            text_color="#9aff9a",
-            fg_color="#142214",
+            font=ctk.CTkFont(size=50, weight="bold"),
+            fg_color="#202020",
             corner_radius=8,
+            height=110,
+            anchor="center",
             padx=12,
             pady=6
         )
@@ -153,7 +154,10 @@ class MobileRobotDashboard(ctk.CTk):
         bumper_panel = ctk.CTkFrame(parent)
         bumper_panel.grid(row=3, column=0, sticky="ew", padx=12, pady=(0,12))
         bumper_panel.grid_columnconfigure(0, weight=1)
+        bumper_panel.grid_rowconfigure(2, minsize=132)
         btn_font = ctk.CTkFont(size=16, weight="bold")
+        self._bumper_font_large = ctk.CTkFont(family="Consolas", size=80, weight="bold")
+        self._bumper_font_medium = ctk.CTkFont(family="Consolas", size=50, weight="bold")
         self.bumper_true_button = ctk.CTkButton(
             bumper_panel,
             text="Bumper",
@@ -176,10 +180,12 @@ class MobileRobotDashboard(ctk.CTk):
         self.bumper_display = ctk.CTkLabel(
             bumper_panel,
             text="--",
-            font=ctk.CTkFont(size=80, weight="bold"),
+            font=self._bumper_font_large,
             text_color="#cccccc",
             fg_color="#202020",
             corner_radius=8,
+            anchor="center",
+            height=120,
             padx=12,
             pady=6
         )
@@ -219,18 +225,18 @@ class MobileRobotDashboard(ctk.CTk):
         battery_panel = ctk.CTkFrame(parent)
         battery_panel.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
         battery_panel.grid_columnconfigure(0, weight=1)
-        # battery percentage gauge (enlarged)
+        # battery percentage gauge 
         gauge_wrapper = ctk.CTkFrame(battery_panel, fg_color="transparent")
         gauge_wrapper.grid(row=0, column=0, padx=4, pady=(8, 4))
         gauge_wrapper.grid_columnconfigure(0, weight=1)
         CANVAS_W = 300  
         CANVAS_H = 120  
         self.battery_canvas = tk.Canvas(gauge_wrapper, width=CANVAS_W, height=CANVAS_H, bg="#111111", highlightthickness=0)
-        self.battery_canvas.grid(row=0, column=0, sticky="n")  # center
+        self.battery_canvas.grid(row=0, column=0, sticky="n")  
         # geometry for body and terminal
         body_left = 6
         body_top = 6
-        body_right = CANVAS_W - 48  # leave space for terminal
+        body_right = CANVAS_W - 48  
         body_bottom = CANVAS_H - 6
         term_left = body_right
         term_right = CANVAS_W - 12
@@ -330,19 +336,25 @@ class MobileRobotDashboard(ctk.CTk):
 
      # battery subscriber 
     def _handle_battery_update(self, payload: str):
-        raw = payload.strip().lower()
-        if not raw:
-            display_text = "--"
-            color = "#cccccc"
-        elif "charg" in raw and "done" not in raw:
-            display_text = "CHARGING"
-            color = "#ffd27f"
-        elif "done" in raw:
-            display_text = "DONE"
-            color = "#9aff9a"
-        else:
-            display_text = payload.strip().upper()
-            color = "#cccccc"
+        raw = (payload or "").strip()
+        val = None
+        try:
+            num = raw.rstrip('%').strip()
+            if num:
+                val = int(float(num))
+                val = max(0, min(100, val))
+        except Exception:
+            val = None
+
+        if val is not None:
+            if val == 0:
+                display_text = "EMPTY"; color = "#ff5555"
+            elif val < 30:
+                display_text = "CHARGING"; color = "#ffd27f"
+            elif val >= 100:
+                display_text = "FULL"; color = "#9aff9a"
+            else:
+                display_text = "STANDBY"; color = "#cccccc"
         self.battery_display.configure(text=display_text, text_color=color)
         self._append_log(f"(SUB) Battery state '{payload}' in {getattr(self, '_battery_sub', '?')}")
 
@@ -373,23 +385,27 @@ class MobileRobotDashboard(ctk.CTk):
     def _on_bumper_false(self):
         if hasattr(self, 'mqtt') and hasattr(self, '_bumper_pub'):
             self.mqtt.publish(self._bumper_pub, "false")
-            self._append_log(f"(PUB) Bumper FALSE in {self._bumper_pub}")
+            self._append_log(f"(PUB) Bumper false in {self._bumper_pub}")
 
     # bumper subscriber
     def _handle_bumper_sensor_update(self, payload: str):
         raw = (payload or "").strip()
-        if not raw:
+        obstacle = None
+        if "true" in raw.lower():
+            obstacle = True
+            display_text = "OBSTACLE"
+            color = "#ffd27f"
+        elif "false" in raw.lower():
+            obstacle = False
+            display_text = "FREE"
+            color = "#9aff9a"
+        else:
             display_text = "--"
             color = "#cccccc"
-        else:
-            if "obstacle" in raw.lower():
-                color = "#ffd27f" 
-            else:
-                color = "#cccccc"  
-            display_text = raw  
-        self.bumper_display.configure(text=display_text, text_color=color)
-        self._append_log(f"(SUB) Bumper sensor '{payload}' in {getattr(self, '_bumper_sensor_sub', '?')}")
-
+        font_to_use = self._bumper_font_medium if display_text == "OBSTACLE" else self._bumper_font_large
+        self.bumper_display.configure(text=display_text, text_color=color, font=font_to_use)
+        log_val = "true" if obstacle is True else ("false" if obstacle is False else "--")
+        self._append_log(f"(SUB) Bumper sensor '{log_val}' in {getattr(self, '_bumper_sensor_sub', '?')}")
 
     # --- Callbacks Low-level-microcontroller ----------------------------------
     # speed publisher
@@ -404,7 +420,7 @@ class MobileRobotDashboard(ctk.CTk):
         if hasattr(self, "speed_value_box"):
             self.speed_value_box.configure(state="normal")
             self.speed_value_box.delete("0.0", "end")
-            self.speed_value_box.insert("0.0", f"{val}% (RX)")
+            self.speed_value_box.insert("0.0", f"{val}%")
             self.speed_value_box.configure(state="disabled")
         self._append_log(f"(SUB) Speed {val}% in {self._speed_sub}")
 
@@ -425,15 +441,19 @@ class MobileRobotDashboard(ctk.CTk):
     # motion subscriber 
     def _handle_motion_update(self, payload: str):
         raw = (payload or "").strip()
-        if not raw:
-            text = "--"
-            color = "#cccccc"
+        try:
+            val_cm = int(float(raw))
+            if val_cm < 0:
+                val_cm = 0
+        except Exception:
+            val_cm = getattr(self, "_last_laser_cm", None)
+
+        if val_cm is None:
+            text = "--"; color = "#cccccc"
+        elif val_cm < 15:
+            text = "STOP"; color = "#ff5555"
         else:
-            if "stop" in raw.lower():
-                color = "#ff5555"  
-            else:
-                color = "#9aff9a" 
-            text = raw.upper()
+            text = "GO"; color = "#9aff9a"
         self.motion_display.configure(text=text, text_color=color)
         self._append_log(f"(SUB) Motion '{payload}' in {getattr(self, '_motion_sub', '?')}")
 
@@ -444,17 +464,17 @@ class MobileRobotDashboard(ctk.CTk):
         self._speed_pub = "/speed_slider/data/value"
         self._speed_sub = "/low_level_controller/speed/data/value"
         self._battery_pub = "/battery_entry/data/value"          
-        self._battery_sub = "/low_level_controller/battery/status"  
+        self._battery_sub = "/fleet/battery_status/status"  
         self._laser_pub = "/laser_slider/data/value"
-        self._motion_sub = "/core/sensor_laser/data/value"
+        self._motion_sub = "/low_level_controller/motion/command"
         self._bumper_pub = "/bumper_button/pressed/value"
         self._bumper_sensor_sub = "/core/sensor_bumper/data"
-        self._mode_pub = "/mode_selector/driving_mode/value"
-        self._connection_switch_pub = "/switch_connection/state/value"  
+        self._mode_pub = "/mode_selector/drive_mode/value"
+        self._connection_switch_pub = "/switch_connection/state"  
         self._connection_state_sub = "/fleet/connection_status/state"
         self._job_pub = "/option_list/job"
         self._robot_status_sub = "/fleet/robot_status/state"
-        self._battery_percentage_sub = "/low-level/battery/data/percentage"
+        self._battery_percentage_sub = "/low_level_controller/battery/percentage"
         
         self.mqtt = MqttService(log_fn=self._append_log)
         self.mqtt.start()
@@ -476,7 +496,15 @@ class MobileRobotDashboard(ctk.CTk):
             self._append_log(f"Payload inválido '{payload}': {e}")
 
     def _on_battery_message(self, topic: str, payload: str):
-       self.after(0, lambda p=payload: self._handle_battery_update(p))
+        self.after(0, lambda p=payload: self._handle_battery_update(p))
+        raw = payload.strip()
+        try:
+            num = raw.rstrip('%').strip()
+            val = int(float(num))
+            val = max(0, min(100, val))
+            self.after(0, lambda v=val: self._handle_battery_percentage_update(str(v)))
+        except Exception:
+            pass
 
     def _on_motion_message(self, topic: str, payload: str):
         self.after(0, lambda p=payload: self._handle_motion_update(p))
@@ -491,7 +519,6 @@ class MobileRobotDashboard(ctk.CTk):
         self.after(0, lambda p=payload: self._handle_robot_status_update(p))
 
     def _on_battery_percentage_message(self, topic: str, payload: str):
-        # schedule GUI update in main thread
         self.after(0, lambda p=payload: self._handle_battery_percentage_update(p))
 
     def _on_connection_switch_toggled(self):
@@ -500,7 +527,6 @@ class MobileRobotDashboard(ctk.CTk):
             self.mqtt.publish(self._connection_switch_pub, payload)
             self._append_log(f"(PUB) Connection request {payload} in {self._connection_switch_pub}")
 
-    # --- Battery percentage gauge update ------------------------------------
     def _handle_battery_percentage_update(self, payload: str):
         raw = (payload or "").strip()
         try:
@@ -512,11 +538,9 @@ class MobileRobotDashboard(ctk.CTk):
         except Exception:
             percent = None
 
-        # interior drawable area for fill (left=4, right=184)
         left_x = getattr(self, "_battery_fill_left", 4)
         right_x_max = getattr(self, "_battery_fill_right_max", 184)
         if percent is None:
-            # reset display
             top = getattr(self, "_battery_fill_top", 4)
             bottom = getattr(self, "_battery_fill_bottom", 52)
             self.battery_canvas.coords(self._battery_fill_rect, left_x, top, left_x, bottom)
@@ -529,7 +553,6 @@ class MobileRobotDashboard(ctk.CTk):
         top = getattr(self, "_battery_fill_top", 4)
         bottom = getattr(self, "_battery_fill_bottom", 52)
         self.battery_canvas.coords(self._battery_fill_rect, left_x, top, new_right, bottom)
-        # constant white fill
         self.battery_canvas.itemconfig(self._battery_fill_rect, fill="#ffffff")
         self._battery_percent_value = percent
         self._append_log(f"(SUB) Battery % '{percent}' in {getattr(self, '_battery_percentage_sub', '?')}")
